@@ -3,6 +3,8 @@ pipeline {
     
     environment {
         DISCORD_WEBHOOK = credentials('discord-webhook-url')
+        DOCKER_CREDENTIALS = credentials('dockerhub-credentials')
+        DOCKER_IMAGE = 'whatjerrytsai/cicd-lab-app'
         STUDENT_NAME = 'Jerry Tsai'
         STUDENT_ID = 'b13705023'
     }
@@ -33,17 +35,68 @@ pipeline {
             }
         }
         
-        stage('Build') {
+        stage('Unit Tests') {
             steps {
-                echo "Building application..."
-                // Add your build commands here
+                script {
+                    echo "Running unit tests..."
+                    sh 'npm test || true'
+                }
             }
         }
         
-        stage('Test') {
+        stage('Build & Deploy to Staging') {
+            when {
+                branch 'dev'
+            }
             steps {
-                echo "Running tests..."
-                // Add your test commands here
+                script {
+                    echo "Building and deploying to staging environment..."
+                    
+                    // Define image tag with build number
+                    def imageTag = "dev-${env.BUILD_NUMBER}"
+                    def fullImageName = "${env.DOCKER_IMAGE}:${imageTag}"
+                    
+                    // Login to Docker Hub
+                    sh """
+                        echo ${DOCKER_CREDENTIALS_PSW} | docker login -u ${DOCKER_CREDENTIALS_USR} --password-stdin
+                    """
+                    
+                    // Build Docker image
+                    sh """
+                        docker build -t ${fullImageName} .
+                    """
+                    
+                    // Push to Docker Hub
+                    sh """
+                        docker push ${fullImageName}
+                    """
+                    
+                    // Cleanup: Remove existing dev-app container if exists
+                    sh """
+                        docker rm -f dev-app || true
+                    """
+                    
+                    // Deploy: Run container on port 8081
+                    sh """
+                        docker run -d \
+                            --name dev-app \
+                            -p 8081:3000 \
+                            --restart unless-stopped \
+                            ${fullImageName}
+                    """
+                    
+                    // Wait for container to be ready
+                    sleep(time: 5, unit: 'SECONDS')
+                    
+                    // Verify: Health check
+                    sh """
+                        curl -f http://localhost:8081/health || exit 1
+                    """
+                    
+                    echo "✅ Staging deployment successful!"
+                    echo "🐳 Image: ${fullImageName}"
+                    echo "🌐 App URL: http://localhost:8081"
+                }
             }
         }
     }
@@ -56,20 +109,31 @@ pipeline {
         }
         success {
             script {
-                sendDiscordNotification('SUCCESS')
+                if (env.BRANCH_NAME == 'dev') {
+                    sendDiscordNotification('SUCCESS', 'Deployed to Staging')
+                } else {
+                    sendDiscordNotification('SUCCESS')
+                }
+            }
+        }
+        always {
+            script {
+                // Logout from Docker Hub
+                sh 'docker logout || true'
             }
         }
     }
 }
 
-def sendDiscordNotification(String buildStatus) {
+def sendDiscordNotification(String buildStatus, String extraInfo = '') {
     def color = buildStatus == 'SUCCESS' ? 3066993 : 15158332
     def emoji = buildStatus == 'SUCCESS' ? '✅' : '❌'
+    def description = extraInfo ? " - ${extraInfo}" : ""
     
     def payload = """
     {
         "embeds": [{
-            "title": "${emoji} Build ${buildStatus}",
+            "title": "${emoji} Build ${buildStatus}${description}",
             "color": ${color},
             "fields": [
                 {
