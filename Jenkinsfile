@@ -3,8 +3,8 @@ pipeline {
     
     environment {
         DISCORD_WEBHOOK = credentials('discord-webhook-url')
-        STUDENT_NAME = 'Your Name'
-        STUDENT_ID = 'Your Student ID'
+        STUDENT_NAME = 'Jerry Tsai'
+        STUDENT_ID = 'b13705023'
     }
     
     stages {
