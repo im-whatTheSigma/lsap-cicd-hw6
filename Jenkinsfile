@@ -95,95 +95,7 @@ pipeline {
                     
                     echo "✅ Staging deployment successful!"
                     echo "🐳 Image: ${fullImageName}"
-                    echo "🌐 Staging URL: http://localhost:8081"
-                    echo "📝 To promote to production, update deploy.config with: ${imageTag}"
-                }
-            }
-        }
-        
-        stage('GitOps Production Deployment') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    echo "🚀 Starting GitOps-based Production Deployment..."
-                    
-                    // Step 1: Read Configuration
-                    if (!fileExists('deploy.config')) {
-                        error("❌ deploy.config file not found! Create it with the desired tag version.")
-                    }
-                    
-                    def TARGET_TAG = readFile('deploy.config').trim()
-                    echo "📋 Target tag from deploy.config: ${TARGET_TAG}"
-                    
-                    if (TARGET_TAG.isEmpty()) {
-                        error("❌ deploy.config is empty! Specify a tag like 'dev-5'")
-                    }
-                    
-                    // Validate tag format
-                    if (!TARGET_TAG.startsWith('dev-')) {
-                        error("❌ Invalid tag format in deploy.config. Expected format: dev-<number>")
-                    }
-                    
-                    // Define image names
-                    def stagingImage = "${env.DOCKER_IMAGE}:${TARGET_TAG}"
-                    def prodTag = "prod-${env.BUILD_NUMBER}"
-                    def prodImage = "${env.DOCKER_IMAGE}:${prodTag}"
-                    
-                    echo "📦 Staging image: ${stagingImage}"
-                    echo "🏭 Production image: ${prodImage}"
-                    
-                    // Login to Docker Hub
-                    sh """
-                        echo ${DOCKER_CREDENTIALS_PSW} | docker login -u ${DOCKER_CREDENTIALS_USR} --password-stdin
-                    """
-                    
-                    // Step 2: Artifact Promotion
-                    echo "⬇️ Pulling staging image..."
-                    sh """
-                        docker pull ${stagingImage}
-                    """
-                    
-                    echo "🏷️ Retagging as production..."
-                    sh """
-                        docker tag ${stagingImage} ${prodImage}
-                    """
-                    
-                    echo "⬆️ Pushing production image..."
-                    sh """
-                        docker push ${prodImage}
-                    """
-                    
-                    // Step 3: Deploy to Production
-                    echo "🧹 Cleaning up old production container..."
-                    sh """
-                        docker rm -f prod-app || true
-                    """
-                    
-                    echo "🚀 Deploying to production (port 8082)..."
-                    sh """
-                        docker run -d \
-                            --name prod-app \
-                            -p 8082:3000 \
-                            --restart unless-stopped \
-                            -e NODE_ENV=production \
-                            ${prodImage}
-                    """
-                    
-                    // Wait for container to be ready
-                    sleep(time: 5, unit: 'SECONDS')
-                    
-                    // Verify: Health check
-                    echo "🏥 Verifying production deployment..."
-                    sh """
-                        curl -f http://localhost:8082/health || exit 1
-                    """
-                    
-                    echo "✅ Production deployment successful!"
-                    echo "🐳 Promoted: ${stagingImage} → ${prodImage}"
-                    echo "🌐 Production URL: http://localhost:8082"
-                    echo "📝 Deployed tag: ${TARGET_TAG}"
+                    echo "🌐 App URL: http://localhost:8081"
                 }
             }
         }
@@ -198,10 +110,7 @@ pipeline {
         success {
             script {
                 if (env.BRANCH_NAME == 'dev') {
-                    sendDiscordNotification('SUCCESS', "Deployed to Staging (dev-${env.BUILD_NUMBER})")
-                } else if (env.BRANCH_NAME == 'main') {
-                    def targetTag = fileExists('deploy.config') ? readFile('deploy.config').trim() : 'unknown'
-                    sendDiscordNotification('SUCCESS', "Deployed to Production (${targetTag} → prod-${env.BUILD_NUMBER})")
+                    sendDiscordNotification('SUCCESS', 'Deployed to Staging')
                 } else {
                     sendDiscordNotification('SUCCESS')
                 }
