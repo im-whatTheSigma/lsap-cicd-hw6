@@ -6,7 +6,7 @@ pipeline {
         DOCKER_CREDENTIALS = credentials('dockerhub-credentials')
         DOCKER_IMAGE = 'whatjerrytsai/cicd-lab-app'
         STUDENT_NAME = 'Jerry Tsai'
-        STUDENT_ID = 'b1370523'
+        STUDENT_ID = 'b13705023'
     }
     
     stages {
@@ -111,10 +111,6 @@ pipeline {
                     """
                     
                     echo "✅ Staging deployment successful!"
-<<<<<<< Updated upstream
-                    echo "🐳 Image: ${fullImageName}"
-                    echo "🌐 App URL: http://localhost:8081"
-=======
                     echo "🐳 Images pushed:"
                     echo "   - ${fullImageNameBuild}"
                     echo "   - ${fullImageNameVersion}"
@@ -144,9 +140,9 @@ pipeline {
                         error("❌ deploy.config is empty! Specify a tag like 'dev-5'")
                     }
                     
-                    // Validate tag format
-                    if (!TARGET_TAG.startsWith('dev-')) {
-                        error("❌ Invalid tag format in deploy.config. Expected format: dev-<number>")
+                    // Validate tag format (accepts both dev-X and vX.X.X)
+                    if (!TARGET_TAG.startsWith('dev-') && !TARGET_TAG.startsWith('v')) {
+                        error("❌ Invalid tag format in deploy.config. Expected format: dev-<number> or v<semantic-version>")
                     }
                     
                     // Define image names
@@ -207,7 +203,6 @@ pipeline {
                     echo "🐳 Promoted: ${stagingImage} → ${prodImage}"
                     echo "🌐 Production URL: http://localhost:8082"
                     echo "📝 Deployed tag: ${TARGET_TAG}"
->>>>>>> Stashed changes
                 }
             }
         }
@@ -222,7 +217,12 @@ pipeline {
         success {
             script {
                 if (env.BRANCH_NAME == 'dev') {
-                    sendDiscordNotification('SUCCESS', 'Deployed to Staging')
+                    def packageJson = readJSON file: 'package.json'
+                    def appVersion = packageJson.version
+                    sendDiscordNotification('SUCCESS', "Deployed to Staging (dev-${env.BUILD_NUMBER} / v${appVersion})")
+                } else if (env.BRANCH_NAME == 'main') {
+                    def targetTag = fileExists('deploy.config') ? readFile('deploy.config').trim() : 'unknown'
+                    sendDiscordNotification('SUCCESS', "Deployed to Production (${targetTag} → prod-${env.BUILD_NUMBER})")
                 } else {
                     sendDiscordNotification('SUCCESS')
                 }
